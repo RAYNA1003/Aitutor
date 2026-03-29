@@ -2,6 +2,7 @@
     #include <vector>
     #include <string>
     #include <set>
+    #include<climits>
     #include <cctype>
     #include<sstream>
    #include <map>
@@ -41,6 +42,7 @@
 struct CompilationResult {
     bool success;
     vector<CompilerError> errors;
+    vector<CompilerError> runtimeErrors;
     vector<string> irInstructions;
     map<string, string> symbolTableSnapshot;
 };
@@ -66,7 +68,7 @@ struct CompilationResult {
         ASTNode* right;
 
         ASTNode(ASTNodeType t, string v = "")
-            : type(t), value(v), left(nullptr), right(nullptr) {}
+            : type(t), value(v), left(nullptr), right(nullptr), elseBranch(nullptr) {}
     };
 
 
@@ -522,7 +524,7 @@ vector<CompilerError> getErrors() {
     else if (current().type == IDENTIFIER) {
         return parseAssignment();
     }
-
+//syntax errors
     else if (current().type == DELIMITER && current().value == "}") {
         errors.push_back({
             "Syntax",
@@ -633,7 +635,7 @@ if (!sym) {
     }
 
 
-
+// for expressions
     ASTNode* parseExpression() {
         ASTNode* node = parseTerm();
 
@@ -946,10 +948,32 @@ else {
     class IRInterpreter {
     private:
         unordered_map<string, Value> memory;
-
+         vector<CompilerError> runtimeErrors; // 👈 add this
+    bool hadError = false;  
     public:
+    void addError(string message, string explanation, string hint) {
+        runtimeErrors.push_back({
+            "Runtime", message, explanation, hint, -1
+        });
+        hadError = true;
+    }
+    vector<CompilerError> getRuntimeErrors() {  // 👈 add this
+        return runtimeErrors;
+    }
         void execute(const vector<string>& instructions) {
+            int loopGuard = 0;
             for (int i = 0; i < instructions.size(); i++) {
+                if (hadError) return;
+                loopGuard++;
+
+if(loopGuard > 100000){
+    addError(
+        "Possible infinite loop detected",
+        "Program exceeded safe execution limit.",
+        "Check your while-loop termination condition."
+    );
+    return;
+}
             string inst = instructions[i];
             if (inst.find("GOTO") == 0) {
         string gotoWord, label;
@@ -1032,10 +1056,36 @@ else if (val.type == "bool")
             Value result;
             result.type = "int";
 
-            if (op == "+") result.intValue = val1.intValue + val2.intValue;
+            if (op == "+") {
+
+    long long temp = (long long)val1.intValue + val2.intValue;
+
+    if (temp > INT_MAX || temp < INT_MIN) {
+        addError(
+        "Integer overflow",
+        "Result exceeds integer limits.",
+        "Use smaller numbers to avoid overflow."
+    );
+    return;
+    }
+
+    result.intValue = temp;
+}
             if (op == "-") result.intValue = val1.intValue - val2.intValue;
             if (op == "*") result.intValue = val1.intValue * val2.intValue;
-            if (op == "/") result.intValue = val1.intValue / val2.intValue;
+           if (op == "/") {
+
+    if (val2.intValue == 0) {
+       addError(
+        "Division by zero",
+        "Division by zero causes program crash.",
+        "Ensure the denominator is not zero before dividing."
+    );
+    return;
+    }
+
+    result.intValue = val1.intValue / val2.intValue;
+}
            if (op == ">") {
     result.type = "bool";
     result.boolValue = val1.intValue > val2.intValue;
@@ -1087,7 +1137,11 @@ else if (op == "!=") {
        Value getValue(string s) {
 
     Value v;
-
+if (s.empty()) {
+        cout << "Runtime Error: Empty value encountered\n";
+        cout.flush();
+        exit(1);
+    }
     // String literal
     if (s[0] == '"') {
         v.type = "string";
@@ -1116,7 +1170,16 @@ else if (op == "!=") {
     }
 
     // Variable lookup
-    return memory[s];
+    if (memory.find(s) == memory.end()) {
+    addError(
+        "Undefined variable '" + s + "'",
+        "Variable accessed before assignment.",
+        "Assign a value before using the variable."
+    );
+    return v; 
+}
+
+return memory[s];
 }
 
 
@@ -1141,9 +1204,14 @@ public:
 
         IRGenerator irGen;
         irGen.generate(program);
-
+   
         result.irInstructions = irGen.getInstructions();
-        result.success = true;
+
+         IRInterpreter interpreter;
+    interpreter.execute(result.irInstructions); // 👈 run it
+
+    result.runtimeErrors = interpreter.getRuntimeErrors();
+       result.success = result.runtimeErrors.empty();
 
         return result;
     }
@@ -1159,7 +1227,10 @@ public:
 
     // Read entire input until EOF
     string code;
-    getline(cin, code, '\0');   // read full input
+    string line;
+while (getline(cin, line)) {
+    code += line + "\n";
+}   // read full input
 
     AITutorCompiler compiler;
     CompilationResult result = compiler.compile(code);
@@ -1176,8 +1247,17 @@ public:
         return 0;
     }
 
-    for (auto &inst : result.irInstructions)
-        cout << inst << endl;
+     if (!result.runtimeErrors.empty()) {
+        for (auto &e : result.runtimeErrors) {
+            cout << "Type: " << e.type << endl;
+            cout << "Error: " << e.message << endl;
+            cout << "Explanation: " << e.explanation << endl;
+            cout << "Hint: " << e.hint << endl;
+            cout << "----" << endl;
+        }
+        return 0;
+    }
+
 
     return 0;
 }

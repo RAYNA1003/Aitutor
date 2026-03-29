@@ -1,1 +1,2 @@
-int c;
+string c;
+c="rayna;

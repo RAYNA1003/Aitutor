@@ -369,7 +369,7 @@
         <div class="editor-wrap">
             <div class="line-numbers" id="line-nums">1</div>
             <textarea id="code" spellcheck="false" autocorrect="off" autocapitalize="off"
-                placeholder="// Write your C code here...">int main() {
+                placeholder="// Write your mini c code here...">int main() {
     int a;
     a = 5;
     return 0;
@@ -412,6 +412,16 @@
             <span class="stat" id="stat-time"></span>
             <span class="stat" id="stat-lines"></span>
         </div>
+        <div class="panel-header">
+        <div class="panel-title">
+            <i class="fa fa-robot"></i>
+            AI Explanation
+        </div>
+    </div>
+
+    <div class="output-body">
+        <pre id="ai-text"></pre>
+    </div>
     </div>
 
 </div>
@@ -491,7 +501,7 @@
         const t0 = performance.now();
 
         try {
-            const response = await fetch('http://localhost:5000/compile', {
+            const response = await fetch('http://localhost:5001/compile', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ code })
@@ -499,7 +509,8 @@
 
             const elapsed = ((performance.now() - t0) / 1000).toFixed(2);
             const data = await response.json();
-            const out = data.output || '';
+           const out = data.compiler_output || '';
+           document.getElementById("ai-text").textContent = data.ai_explanation || "";
             const isError = /error|Error/.test(out);
 
             document.getElementById('empty-state').style.display = 'none';
@@ -527,7 +538,7 @@
         } catch (err) {
             document.getElementById('empty-state').style.display = 'none';
             const outEl = document.getElementById('output-text');
-            outEl.textContent = '⚠ Could not reach the compile server.\nMake sure localhost:5000 is running.';
+            outEl.textContent = '⚠ Could not reach the compile server.\nMake sure localhost:5001 is running.';
             outEl.className = 'error';
             showStatus('Server error', 3000);
         } finally {
